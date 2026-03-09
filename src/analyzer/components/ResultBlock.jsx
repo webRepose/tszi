@@ -8,15 +8,15 @@ const ResultBlock = ({ data }) => {
     <div className={styles.result}>
       <h3>Рекомендуемые ТСЗИ:</h3>
 
-      <div className={styles.grid}>
-        {data.map((tool, index) => (
-          <div
-            key={tool.id}
-            className={`${styles.card} ${
-              index === 0 ? styles.best : ""
-            }`}
-            onClick={() => navigate(`/tools/${tool.id}`)}
-          >
+<div className={styles.grid}>
+  {data
+    .filter(tool => tool.score > 0)
+    .map((tool, index) => (
+      <div
+        key={tool.id}
+        className={`${styles.card} ${index === 0 ? styles.best : ""}`}
+        onClick={() => navigate(`/tools/${tool.id}`)}
+      >
             {tool.imageUrl && (
               <img
                 src={tool.imageUrl}
@@ -53,7 +53,11 @@ const ResultBlock = ({ data }) => {
             </p>
 
             <div className={styles.score}>
-              Индекс соответствия: {tool.score}
+              Индекс соответствия: {tool.score}%
+            </div>
+
+            <div className={styles.price}>
+              💰 {tool.price}
             </div>
           </div>
         ))}

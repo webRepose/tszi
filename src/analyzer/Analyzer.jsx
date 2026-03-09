@@ -3,102 +3,139 @@ import { collection, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
 import styles from "../styles/s-analyzer/analyzer.module.scss";
 import { useNavigate, Link } from "react-router-dom";
-import ResultBlock from './components/ResultBlock';
+import ResultBlock from "./components/ResultBlock";
 
 const Analyzer = () => {
+
   const navigate = useNavigate();
 
   const [category, setCategory] = useState("");
   const [threatLevel, setThreatLevel] = useState("");
   const [requireCrypto, setRequireCrypto] = useState(false);
   const [selectedBudget, setSelectedBudget] = useState("any");
+
   const [results, setResults] = useState([]);
   const [analyzed, setAnalyzed] = useState(false);
 
   const levels = { low: 1, medium: 2, high: 3 };
 
-  const handleAnalyze = async () => {
-  const nothingSelected =
-    !category &&
-    !threatLevel &&
-    !requireCrypto &&
-    selectedBudget === "any";
+  // перевод "220 000 ₸" → 220000
+  const parsePrice = (price) => {
+    if (!price) return 0;
+    return Number(price.replace(/[^\d]/g, ""));
+  };
 
-  if (nothingSelected) {
-    setResults([]);
-    setAnalyzed("emptyFilters");
-    return;
-  }
+  const handleAnalyze = async () => {
+
+    const nothingSelected =
+      !category &&
+      !threatLevel &&
+      !requireCrypto &&
+      selectedBudget === "any";
+
+    if (nothingSelected) {
+      setResults([]);
+      setAnalyzed("emptyFilters");
+      return;
+    }
+
     const snapshot = await getDocs(collection(db, "tools"));
+
     const tools = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
     }));
 
-const scored = tools.map(tool => {
-  let score = 0;
-  let weightSum = 0;
 
-  // Категория (вес 3)
-  if (category) {
-    weightSum += 3;
-    if (tool.category === category) score += 3;
-  }
+    const scored = tools.map(tool => {
 
-  // Уровень угроз (вес 4)
-  if (threatLevel) {
-    weightSum += 4;
-    if (levels[tool.minThreat] >= levels[threatLevel]) {
-      score += 4;
+      let score = 0;
+      let weightSum = 0;
+
+      const price = parsePrice(tool.price);
+
+      // CATEGORY
+      if (category) {
+        weightSum += 3;
+        if (tool.category === category) score += 3;
+      }
+
+      // THREAT
+      if (threatLevel) {
+        weightSum += 4;
+        if (levels[tool.minThreat] >= levels[threatLevel]) {
+          score += 4;
+        }
+      }
+
+      // CRYPTO
+      if (requireCrypto) {
+        weightSum += 2;
+        if (tool.supportsCrypto) score += 2;
+      }
+
+
+      if (selectedBudget !== "any") {
+      const budgetValue = Number(selectedBudget);
+      if (price > budgetValue) {
+        // инструмент слишком дорогой, сразу исключаем
+        return null; // не начисляем score и не включаем в результат
+      } else {
+        weightSum += 2;
+        score += 2;
+      }
     }
-  }
 
-  // Криптография (вес 2)
-  if (requireCrypto) {
-    weightSum += 2;
-    if (tool.supportsCrypto) score += 2;
-  }
+      const normalizedScore =
+        weightSum === 0
+          ? 0
+          : Math.round((score / weightSum) * 100);
 
-  // Бюджет (вес 2)
-  if (selectedBudget !== "any") {
-    weightSum += 2;
-    if (tool.budgetLevel === selectedBudget) score += 2;
-  }
+      return { ...tool, score: normalizedScore };
 
-  const normalizedScore =
-    weightSum === 0 ? 0 : Math.round((score / weightSum) * 100);
-
-  return { ...tool, score: normalizedScore };
-});
+    });
 
     const filtered = scored
-      .filter(tool => tool.score > 0)
-      .sort((a, b) => b.score - a.score);
+  .filter(tool => tool && tool.score > 0) // убираем null из-за превышения бюджета
+  .sort((a, b) => b.score - a.score);
 
     setResults(filtered);
     setAnalyzed(true);
+
   };
 
+
   return (
+
     <section className={styles.analyzer}>
+
       <div className={styles.header}>
-        <button onClick={() => navigate(-1)} className={styles.backBtn}>
-          <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#e3e3e3"><path d="M400-80 0-480l400-400 71 71-329 329 329 329-71 71Z"/></svg>
+
+        <button
+          onClick={() => navigate(-1)}
+          className={styles.backBtn}
+        >
+          ←
         </button>
+
         <div className={styles.path}>
           <Link to="/">Главная</Link>
           <span>/</span>
           <span>Анализ ТСЗИ</span>
         </div>
-                <h2>Анализ ТСЗИ</h2>
+
+        <h2>Интеллектуальный анализ ТСЗИ</h2>
+
       </div>
+
 
       <div className={styles.grid}>
 
         <div className={styles.formBlock}>
 
           <div className={styles.formGroup}>
-            <label>Категория защиты:</label>
+            <label>Категория защиты</label>
+
             <select
               className={styles.select}
               value={category}
@@ -111,8 +148,10 @@ const scored = tools.map(tool => {
             </select>
           </div>
 
+
           <div className={styles.formGroup}>
-            <label>Требуемый уровень угроз:</label>
+            <label>Уровень угроз</label>
+
             <select
               value={threatLevel}
               className={styles.select}
@@ -125,6 +164,7 @@ const scored = tools.map(tool => {
             </select>
           </div>
 
+
           <div className={styles.checkbox}>
             <label>
               <input
@@ -132,57 +172,75 @@ const scored = tools.map(tool => {
                 checked={requireCrypto}
                 onChange={(e) => setRequireCrypto(e.target.checked)}
               />
-              Обязательная криптографическая защита
+              Требуется криптографическая защита
             </label>
           </div>
 
+
           <div className={styles.formGroup}>
-            <label>Бюджет:</label>
+            <label>Бюджет</label>
+
             <select
               value={selectedBudget}
               className={styles.select}
-              onChange={(e) => setSelectedBudget(e.target.value)}
+              onChange={(e) =>
+                setSelectedBudget(e.target.value)
+              }
             >
+
               <option value="any">Любой</option>
-              <option value="low">Низкий</option>
-              <option value="medium">Средний</option>
-              <option value="high">Высокий</option>
+              <option value="100000">до 100 000 ₸</option>
+              <option value="300000">до 300 000 ₸</option>
+              <option value="500000">до 500 000 ₸</option>
+              <option value="1000000">до 1 000 000 ₸</option>
+
             </select>
           </div>
 
-          <button onClick={handleAnalyze} className={styles.button}>
+
+          <button
+            onClick={handleAnalyze}
+            className={styles.button}
+          >
             Выполнить анализ
           </button>
+
         </div>
+
 
         <div className={styles.resultBlock}>
 
-  {!analyzed && (
-    <p className={styles.placeholder}>
-      Выберите параметры системы защиты и выполните интеллектуальный анализ
-    </p>
-  )}
+          {!analyzed && (
+            <p className={styles.placeholder}>
+              Выберите параметры и выполните анализ
+            </p>
+          )}
 
-  {analyzed === "emptyFilters" && (
-    <p className={styles.warning}>
-      Не выбраны критерии анализа. Укажите хотя бы один параметр фильтрации.
-    </p>
-  )}
+          {analyzed === "emptyFilters" && (
+            <p className={styles.warning}>
+              Укажите хотя бы один параметр
+            </p>
+          )}
 
-  {analyzed === true && results.length === 0 && (
-    <p className={styles.noResult}>
-      По заданным критериям соответствующие ТСЗИ не обнаружены
-    </p>
-  )}
+          {analyzed === true &&
+            results.length === 0 && (
+              <p className={styles.noResult}>
+                Подходящие ТСЗИ не найдены
+              </p>
+            )}
 
-  {Array.isArray(results) && results.length > 0 && (
-    <ResultBlock data={results} />
-  )}
+          {results.length > 0 && (
+            <ResultBlock data={results} />
+          )}
 
-</div>
+        </div>
+
       </div>
+
     </section>
+
   );
+
 };
 
 export default Analyzer;
